@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useRef, useEffect, useCallback} from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -6,12 +6,12 @@ import {
   ActivityIndicator,
   View,
   Text,
-  // TouchableOpacity,
+  TouchableOpacity,
   Button,
   Alert,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
-import {TouchableOpacity} from 'react-native-gesture-handler';
+import {TouchableOpacity as GHTouchableOpacity} from 'react-native-gesture-handler';
 
 const AnimatedFlatList = Animated.createAnimatedComponent(FlatList);
 
@@ -54,30 +54,58 @@ const DATA = [
   },
 ];
 
+const useIsMounted = () => {
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+  const memoised = useCallback(() => {
+    return isMounted.current;
+  }, []);
+  return memoised;
+};
+
 const Item = ({title, onPress}) => {
   const [deleting, setDeleting] = useState(false);
+  const isMounted = useIsMounted();
+  const timer = useRef(null);
 
   const _onPress = () => {
-    setDeleting(true);
+    isMounted && setDeleting(true);
 
     // Calling before to have a delay before state update
     onPress();
 
-    setTimeout(() => {
-      // Will cause:
-      // Warning: Can't perform a React state update on an unmounted component. This is a no-op, but it indicates a memory leak in your application. To fix, cancel all subscriptions and asynchronous tasks in a useEffect cleanup function.
-      setDeleting(false);
+    timer.current = setTimeout(() => {
+      isMounted && setDeleting(false);
     }, 2000);
   };
+
+  // Ensure timeout is cleared
+  useEffect(() => {
+    return () => {
+      clearTimeout(timer.current);
+    };
+  }, []);
 
   return (
     <View style={styles.item}>
       <Text style={styles.title}>{title}</Text>
-      <TouchableOpacity onPress={_onPress}>
-        <View style={styles.button}>
-          {deleting ? <ActivityIndicator /> : <Text>Delete</Text>}
-        </View>
-      </TouchableOpacity>
+      <View style={styles.actions}>
+        <TouchableOpacity onPress={_onPress}>
+          <View style={styles.button}>
+            {deleting ? <ActivityIndicator /> : <Text>Delete</Text>}
+          </View>
+        </TouchableOpacity>
+        <GHTouchableOpacity onPress={_onPress}>
+          <View style={styles.button}>
+            {deleting ? <ActivityIndicator /> : <Text>GH Delete</Text>}
+          </View>
+        </GHTouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -93,6 +121,12 @@ const App = () => {
     <Item title={item.title} onPress={() => onPress(item.id)} />
   );
 
+  // Here is the issue
+  // const keyExtractor = (_, index) => String(index)
+
+  // This seems to WORK!
+  const keyExtractor = (item) => item.id;
+
   return (
     <SafeAreaView style={styles.container}>
       <Button
@@ -100,12 +134,12 @@ const App = () => {
         onPress={() => Alert.alert('Pressed')}
         title={'Button'}
       />
-      <AnimatedFlatList
+      <FlatList
+        // <AnimatedFlatList
         data={data}
+        extraData={data} // Doesn't make a difference
         renderItem={renderItem}
-        keyExtractor={(_, index) => String(index)}
-        // This seems to work better
-        // keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
       />
     </SafeAreaView>
   );
@@ -130,6 +164,10 @@ const styles = StyleSheet.create({
     width: 100,
     height: 20,
     backgroundColor: 'red',
+    margin: 2,
+  },
+  actions: {
+    flexDirection: 'row',
   },
 });
 
